@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<!-- KEY和安全密钥的填写位置在约360行左右 -->
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>高德地图坐标拾取器</title>
+    <link rel="stylesheet" href="https://a.amap.com/jsapi_demos/static/demo-center/css/demo-center.css" />
+    <style>
+        :root {
+            --glass-bg: rgba(255,255,255,0.55);
+            --glass-border: rgba(255,255,255,0.65);
+            --glass-shadow: rgba(0,0,0,0.12);
+            --glass-text: #1d1d1f;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --glass-bg: rgba(25,25,28,0.55);
+                --glass-border: rgba(255,255,255,0.12);
+                --glass-shadow: rgba(0,0,0,0.45);
+                --glass-text: rgba(255,255,255,0.85);
+            }
+            html, body {
+                background-color: #0b0b10;
+            }
+        }
+        html, body, #container {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f7;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        #container { width: 100%; height: 100vh; }
+        #panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            width: 340px;
+            max-height: 90vh;
+            padding: 24px;
+            box-sizing: border-box;
+            background: linear-gradient(160deg, rgba(255,255,255,0.75), rgba(255,255,255,0.35));
+            backdrop-filter: blur(35px) saturate(200%);
+            -webkit-backdrop-filter: blur(35px) saturate(200%);
+            border-radius: 28px;
+            font-size: 14px;
+            transition: transform 0.35s cubic-bezier(.2,.8,.2,1);
+        	scrollbar-width: none; 
+            -ms-overflow-style: none; 
+        	overscroll-behavior: contain;
+        	background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            box-shadow:
+                0 25px 60px var(--glass-shadow),
+                inset 0 1px 2px rgba(255,255,255,0.6);
+            color: var(--glass-text);
+        	--mx: 50%;
+            --my: 50%;
+            position: absolute;
+            overflow-x: auto;
+            overflow-y: auto;
+        	backdrop-filter: blur(40px) saturate(180%) contrast(110%);
+        }
+        .glass-hover {
+            position: relative;
+        }
+        #panel::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(
+                220px circle at var(--mx) var(--my),
+                rgba(255,255,255,0.18),
+                rgba(255,255,255,0.08) 30%,
+                transparent 70%
+            );
+            opacity: 0;
+            transition: opacity 0.25s ease;
+            mix-blend-mode: screen;
+        }
+        #panel:hover::before {
+            opacity: 1;
+        }
+        #panel::-webkit-scrollbar {
+            width: 0px;
+            height: 0px;
+            display: none;
+        }
+        #panel.collapsed {
+            transform: translateX(calc(-100% - 18px)); 
+        }
+        #panelHandle {
+            position: absolute;
+            top: 50%;
+            left: clamp(
+                4px,
+                calc(20px + 340px + 14px),
+                calc(100vw - 40px)
+            );
+            transform: translateY(-50%);
+            width: 34px;
+            height: 90px;
+            border-radius: 999px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            color: var(--glass-text);
+            backdrop-filter: blur(25px) saturate(180%);
+            -webkit-backdrop-filter: blur(25px) saturate(180%);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 1100;
+            animation: float 2s ease-in-out infinite;
+            transition: left 0.35s cubic-bezier(.2,.8,.2,1), transform 0.35s;
+        }
+        #panelHandle::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: radial-gradient(
+                circle at 30% 30%,
+                rgba(255,255,255,0.18),
+                transparent 60%
+            );
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        @media (prefers-color-scheme: dark) {
+            #panelHandle::after {
+                background: radial-gradient(
+                    circle at 30% 30%,
+                    rgba(255,255,255,0.08),
+                    transparent 60%
+                );
+            }
+        }
+        #panel.collapsed + #panelHandle {
+            left: 6px;
+        }
+        #panelHandle {
+            animation: float 2s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(-50%) translateX(0); }
+            50% { transform: translateY(-50%) translateX(4px); }
+        	backdrop-filter: blur(25px) saturate(180%);
+            -webkit-backdrop-filter: blur(25px) saturate(180%);
+        }
+        #panelHandle::before {
+            content: "‹";
+            font-size: 18px;
+            font-weight: bold;
+            color: rgba(0,0,0,0.45);
+        }
+        #panel.collapsed + #panelHandle::before {
+            content: "›";
+        }
+        .warning-text { font-size: 12px; color: #ff3b30; }
+        hr {
+            border: none;
+            height: 1px;
+            background: rgba(0,0,0,0.08);
+            margin: 14px 0;
+        }
+        .data-box {
+            background: rgba(255,255,255,0.4);
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #007AFF;
+            margin-top: 6px;
+            word-break: break-all;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.5);
+            background: rgba(255,255,255,0.4);
+            outline: none;
+        }
+        .glass-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 10px 18px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.6);
+            backdrop-filter: blur(20px);
+            cursor: pointer;
+        }
+        .glass-info {
+            padding: 10px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.7);
+            backdrop-filter: blur(18px);
+        }
+        .amap-info-outer {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .amap-info-sharp {
+            display: none !important;
+        }
+        .amap-sug-result,
+        .amap-sug-container,
+        .auto-complete-container {
+            background: rgba(255,255,255,0.55) !important;
+            backdrop-filter: blur(20px) saturate(180%) !important;
+            -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+            border-radius: 16px !important;
+            border: 1px solid rgba(255,255,255,0.6) !important;
+            box-shadow: 0 18px 50px rgba(0,0,0,0.15) !important;
+            overflow: hidden !important;
+            font-family: -apple-system, BlinkMacSystemFont;
+        }
+        .amap-sug-result li,
+        .auto-item {
+            background: transparent !important;
+            padding: 10px 12px !important;
+            transition: all 0.2s ease;
+        }
+        .amap-sug-result li:hover,
+        .auto-item:hover {
+            background: rgba(0,122,255,0.12) !important;
+            backdrop-filter: blur(10px);
+        }
+        .amap-sug-result li,
+        .auto-item {
+            position: relative;
+            overflow: hidden;
+        }
+        .amap-sug-result li:hover,
+        .auto-item:hover {
+            background: rgba(255,255,255,0.08) !important;
+        }
+        .amap-sug-result li::before,
+        .auto-item::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -60%;
+            width: 60%;
+            height: 100%;
+            background: linear-gradient(
+                120deg,
+                transparent 0%,
+                rgba(255,255,255,0.35) 50%,
+                transparent 100%
+            );
+            transform: skewX(-20deg);
+            opacity: 0;
+        }
+        .amap-sug-result li::after,
+        .auto-item::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(
+                180px circle at var(--x, 50%) var(--y, 50%),
+                rgba(255,255,255,0.35),
+                transparent 60%
+            );
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+        .amap-sug-result li:hover::after,
+        .auto-item:hover::after {
+            opacity: 1;
+        }
+        @keyframes glassFlow {
+            0% {
+                left: -60%;
+            }
+            100% {
+                left: 120%;
+            }
+        }
+        .search-box input {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px) saturate(180%);
+            color: var(--glass-text);
+        }
+        .glass-btn {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            color: var(--glass-text);
+        }
+        @media (prefers-color-scheme: dark) {
+            .amap-sug-result,
+            .amap-sug-container,
+            .auto-complete-container {
+                background: rgba(28,28,32,0.55) !important;
+                border: 1px solid rgba(255,255,255,0.08) !important;
+                box-shadow: 0 18px 50px rgba(0,0,0,0.55) !important;
+            }
+            .amap-sug-result li,
+            .auto-item {
+                color: rgba(255,255,255,0.85) !important;
+            }
+            .amap-sug-result li:hover,
+            .auto-item:hover {
+                background: rgba(255,255,255,0.06) !important;
+            }
+            .amap-sug-result li::before,
+            .auto-item::before {
+                background: linear-gradient(
+                    120deg,
+                    transparent,
+                    rgba(255,255,255,0.12),
+                    transparent
+                );
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="panel" class="glass-hover">
+        <h3>高德地图坐标拾取器</h3>
+		<h4>使用说明</h4>
+        <div class="warning-text">本源码仅限本地使用 不可建站 不可商用</div>
+        <div class="warning-text">需要在HTML源码中填写 KEY + 安全密钥 才可使用</div>
+        <div class="warning-text">获取方法：前往高德地图开放平台注册并认证一个账号 --> 在 控制台,应用管理,我的应用 中创建新应用(任意) --> 为该应用添加Key,服务平台选择Web端(JS API),其他设置均默认 --> 复制KEY和安全密钥并填写于本源码中</div>
+        <hr>
+        <h4>光标位置</h4>
+        <div style="margin-top:6px;"><b>GCJ-02</b></div>
+        <div id="gcj" class="data-box">--</div>
+        <div style="margin-top:6px;"><b>BD-09</b></div>
+        <div id="bd" class="data-box">--</div>
+        <div style="margin-top:6px;"><b>WGS-84</b></div>
+        <div id="wgs" class="data-box">--</div>
+        <hr>
+        <h4>当前位置</h4>
+        <h4 id='status'></h4>
+        <p id='result'></p>
+        <hr>
+        <div class="search-box">
+            <input id="tipinput" placeholder="搜索地点 / 地址">
+        </div>
+    </div>
+    <div id="panelHandle"></div>
+    <div id="container"></div>
+	
+	<!-- 安全密钥填写 -->
+    <script>
+        window._AMapSecurityConfig = {
+            securityJsCode: "填写你的安全密钥的值"
+        };
+    </script>
+	<!-- 安全密钥填写 -->
+	
+	<!-- KEY填写 -->
+    <script src="https://webapi.amap.com/maps?v=2.0&key=填写你的KEY的值&plugin=AMap.AutoComplete,AMap.PlaceSearch,AMap.Geolocation"></script>
+	<!-- KEY填写 -->
+	
+    <script src="https://webapi.amap.com/js/marker.js"></script>
+    <script>
+        var map = new AMap.Map('container', {
+        		resizeEnable: true
+        	});
+        AMap.plugin(['AMap.MapType'], function () {
+            var type = new AMap.MapType({
+                defaultType: 0 
+            });
+            map.addControl(type);
+        });
+        var gcjDiv = document.getElementById('gcj');
+        var bdDiv = document.getElementById('bd');
+        var wgsDiv = document.getElementById('wgs');
+        var marker = null;
+        var infoWindow = null;
+        var mark_icon = new AMap.Icon({
+            image: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png',
+            size: new AMap.Size(24, 32)
+        });
+        		function gcj02towgs84(lng, lat) {
+                  var PI = 3.1415926535897932384626;
+                  var a = 6378245.0;
+                  var ee = 0.00669342162296594323;
+                  function transformlat(lng, lat) {
+                var ret = -100 + 2 * lng + 3 * lat + 0.2 * lat * lat +
+                  0.1 * lng * lat + 0.2 * Math.sqrt(Math.abs(lng));
+                ret += (20 * Math.sin(6 * lng * PI) + 20 *
+                  Math.sin(2 * lng * PI)) * 2 / 3;
+                ret += (20 * Math.sin(lat * PI) + 40 *
+                  Math.sin(lat / 3 * PI)) * 2 / 3;
+                ret += (160 * Math.sin(lat / 12 * PI) + 320 *
+                  Math.sin(lat * PI / 30)) * 2 / 3;
+                return ret;
+                  }
+                  function transformlng(lng, lat) {
+                var ret = 300 + lng + 2 * lat + 0.1 * lng * lng +
+                  0.1 * lng * lat + 0.1 * Math.sqrt(Math.abs(lng));
+                ret += (20 * Math.sin(6 * lng * PI) + 20 *
+                  Math.sin(2 * lng * PI)) * 2 / 3;
+                ret += (20 * Math.sin(lng * PI) + 40 *
+                  Math.sin(lng / 3 * PI)) * 2 / 3;
+                ret += (150 * Math.sin(lng / 12 * PI) + 300 *
+                  Math.sin(lng / 30 * PI)) * 2 / 3;
+                return ret;
+                  }
+                  function out_of_china(lng, lat) {
+                return !(lng > 73.66 && lng < 135.05 && lat > 3.86 && lat < 53.55);
+                  }
+                  if (out_of_china(lng, lat)) return [lng, lat];
+                  var dlat = transformlat(lng - 105, lat - 35);
+                  var dlng = transformlng(lng - 105, lat - 35);
+                  var radlat = lat / 180 * PI;
+                  var magic = Math.sin(radlat);
+                  magic = 1 - ee * magic * magic;
+                  var sqrtmagic = Math.sqrt(magic);
+                  dlat = (dlat * 180) / ((a * (1 - ee)) / (magic * sqrtmagic) * PI);
+                  dlng = (dlng * 180) / (a / sqrtmagic * Math.cos(radlat) * PI);
+                  var mglat = lat + dlat;
+                  var mglng = lng + dlng;
+                  return [lng * 2 - mglng, lat * 2 - mglat];
+                }
+                function gcj02tobd09(lng, lat) {
+                var x_pi = Math.PI * 3000.0 / 180.0;
+                var z = Math.sqrt(lng * lng + lat * lat) + 0.00002 * Math.sin(lat * x_pi);
+                var theta = Math.atan2(lat, lng) + 0.000003 * Math.cos(lng * x_pi);
+                var bd_lng = z * Math.cos(theta) + 0.0065;
+                var bd_lat = z * Math.sin(theta) + 0.006;
+                return [bd_lng, bd_lat];
+                }
+        function updateCoords(lng, lat) {
+                  var wgs = gcj02towgs84(lng, lat);
+                  var bd = gcj02tobd09(lng, lat);
+                  var gcjStr = lat.toFixed(6) + ' , ' + lng.toFixed(6);
+                  var wgsStr = wgs[1].toFixed(6) + ' , ' + wgs[0].toFixed(6);
+                  var bdStr = bd[1].toFixed(6) + ' , ' + bd[0].toFixed(6);
+                  gcjDiv.innerHTML = gcjStr;
+                  wgsDiv.innerHTML = wgsStr;
+                  bdDiv.innerHTML = bdStr;
+                  return { gcj: gcjStr, wgs: wgsStr,bd: bdStr };
+                }
+        function selectPoint(lng, lat, text="当前选点") {
+            var coords = updateCoords(lng, lat);
+            if (marker) marker.setMap(null);
+            marker = new AMap.Marker({
+                position: [lng, lat],
+                icon: mark_icon,
+                offset: new AMap.Pixel(-8, -30)
+            });
+            map.add(marker);
+            var content = `
+            <div class="glass-info">
+                <div class="title">${text}</div>
+                <div><b>GCJ-02</b><br>${coords.gcj}</div>
+                <div><b>BD-09</b><br>${coords.bd}</div>
+                <div><b>WGS-84</b><br>${coords.wgs}</div>
+            </div>`;
+            if (infoWindow) infoWindow.close();
+            infoWindow = new AMap.InfoWindow({
+                content,
+                offset: new AMap.Pixel(0, -30)
+            });
+            infoWindow.open(map, [lng, lat]);
+        }
+        function updateFromEvent(e) {
+            if (!e || !e.lnglat) return;
+            updateCoords(e.lnglat.lng, e.lnglat.lat);
+        }
+        map.on('mousemove', updateFromEvent);
+        map.on('touchmove', function(e) {
+            if (e.lnglat) {
+                updateFromEvent(e);
+            }
+        });
+        map.on('mapmove', function() {
+            var center = map.getCenter();
+            updateCoords(center.lng, center.lat);
+        });
+        map.on('click', function(e) {
+            selectPoint(e.lnglat.lng, e.lnglat.lat);
+        });
+        AMap.plugin('AMap.Geolocation', function() {
+                    var geolocation = new AMap.Geolocation({
+                        enableHighAccuracy: true,
+                        timeout: 10000,          
+                        buttonPosition:'RB',    
+                        buttonOffset: new AMap.Pixel(10, 20),
+                        zoomToAccuracy: true,   
+                    });
+                    map.addControl(geolocation);
+                    geolocation.getCurrentPosition(function(status,result){
+                        if(status=='complete'){
+                            onComplete(result)
+                        }else{
+                            onError(result)
+                        }
+                    });
+                });
+        function onComplete(data) {
+                	document.getElementById('status').innerHTML='定位成功'
+                	var str = [];
+                var position = data.position;
+                	str.push('定位结果：' + position.lat+' , '+position.lng);
+                	str.push('定位类别：' + data.location_type);
+                	if(data.accuracy){
+                		 str.push('精度：' + data.accuracy + ' 米');
+                	}
+                	str.push('是否经过偏移：' + (data.isConverted ? '是' : '否'));
+                	document.getElementById('result').innerHTML = str.join('<br>');
+                }
+                function onError(data) {
+                	document.getElementById('status').innerHTML='定位失败'
+                	document.getElementById('result').innerHTML = '失败原因排查信息:'+data.message;
+                }
+        AMap.plugin(['AMap.Autocomplete'], function () {
+                var auto = new AMap.AutoComplete({
+                    input: "tipinput",
+                    city: "全国"
+                });
+                auto.on("select", function(e) {
+                    if (e.poi && e.poi.location) {
+                        var lng = e.poi.location.lng;
+                        var lat = e.poi.location.lat;
+                        selectPoint(lng, lat,e.poi.name);
+                    }
+                    else {
+                        var placeSearch = new AMap.PlaceSearch();
+                        placeSearch.search(e.poi.name, function(status, result) {
+                            if (status === 'complete' && result.poiList.pois.length) {
+                                var pois = result.poiList.pois;
+                                map.clearMap();
+                                pois.forEach(function(poi) {
+                                    var marker = new AMap.Marker({
+                                        position: poi.location,
+                                        icon: mark_icon,
+                                        offset: new AMap.Pixel(-8,-30),
+                                        map: map
+                                    });
+                                    marker.on('click', function() {
+                                        selectPoint(poi.location.lng, poi.location.lat,poi.name);
+                                    });
+                                });
+                                map.panTo(pois[0].location);
+                            }
+                        });
+                    }
+                });
+                });
+        var panel = document.getElementById('panel');
+        var handle = document.getElementById('panelHandle');
+        handle.onclick = function () {
+            panel.classList.toggle('collapsed');
+        };
+        if (window.innerWidth <= 600) {
+            panel.classList.add('collapsed');
+        }
+        document.addEventListener("mousemove", function (e) {
+            const items = document.querySelectorAll(".amap-sug-result li, .auto-item");
+            items.forEach(el => {
+                const rect = el.getBoundingClientRect();
+                const inside =
+                    e.clientX >= rect.left &&
+                    e.clientX <= rect.right &&
+                    e.clientY >= rect.top &&
+                    e.clientY <= rect.bottom;
+                if (!inside) return;
+                const x = ((e.clientX - rect.left) / rect.width) * 100;
+                const y = ((e.clientY - rect.top) / rect.height) * 100;
+                el.style.setProperty("--x", `${x}%`);
+                el.style.setProperty("--y", `${y}%`);
+            });
+        });
+        const panelEl = document.getElementById("panel");
+        let mx = 0, my = 0;
+        let tx = 0, ty = 0;
+        panelEl.addEventListener("mousemove", (e) => {
+            const rect = panelEl.getBoundingClientRect();
+            tx = e.clientX - rect.left;
+            ty = e.clientY - rect.top;
+        });
+        function animate() {
+            mx += (tx - mx) * 0.15;
+            my += (ty - my) * 0.15;
+            panelEl.style.setProperty("--mx", mx + "px");
+            panelEl.style.setProperty("--my", my + "px");
+            requestAnimationFrame(animate);
+        }
+        animate();
+        document.addEventListener('wheel', function (e) {
+            const sug = document.querySelector('.amap-sug-result');
+            if (!sug) return;
+            const rect = sug.getBoundingClientRect();
+            const inside =
+                e.clientX >= rect.left &&
+                e.clientX <= rect.right &&
+                e.clientY >= rect.top &&
+                e.clientY <= rect.bottom;
+            if (inside) {
+                e.stopPropagation();
+            }
+        }, { passive: true });
+        const input = document.getElementById('tipinput');
+        input.addEventListener('input', function () {
+            this.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        input.addEventListener('compositionend', function () {
+            this.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    </script>
+</body>
+</html>
